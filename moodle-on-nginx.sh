@@ -152,3 +152,83 @@ sudo -u ${CRON_USER} \
 
 echo "Moodle CLI installation complete. Admin user: admin, password stored in /home/${CREATOR}/moodlePasswords.txt."
 
+# Create backup database user and configure daily backups
+echo "Creating backup database user..."
+BACKUP_USER_PASSWORD=$(openssl rand -base64 6)
+# Save backup user password
+echo "Backup DB Password: ${BACKUP_USER_PASSWORD}" | tee -a "/home/${CREATOR}/moodlePasswords.txt"
+
+mysql <<EOF
+CREATE USER 'backupuser'@'localhost' IDENTIFIED BY '${BACKUP_USER_PASSWORD}';
+GRANT LOCK TABLES, SELECT ON moodle.* TO 'backupuser'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+
+echo "Configuring MySQL client credentials for backupuser..."
+cat > /root/.my.cnf <<EOF
+[client]
+user=backupuser
+password=${BACKUP_USER_PASSWORD}
+EOF
+chmod 600 /root/.my.cnf
+
+echo "Setting up backup directory and cron jobs..."
+mkdir -p /var/backups/moodle && chmod 700 /var/backups/moodle && chown root:root /var/backups/moodle
+(
+  crontab -l 2>/dev/null;
+  echo "0 2 * * * mysqldump --defaults-file=/root/.my.cnf moodle > /var/backups/moodle/moodle_backup_\$(date +%F).sql"
+) | crontab -
+(
+  crontab -l 2>/dev/null;
+  echo "0 3 * * * find /var/backups/moodle -name \"moodle_backup_*.sql\" -type f -mtime +7 -delete"
+) | crontab -
+
+# Reset Moodle directory permissions to secure defaults
+echo "Resetting Moodle code permissions..."
+find /var/www/html/moodle -type d -exec chmod 755 {} \;
+find /var/www/html/moodle -type f -exec chmod 644 {} \;
+
+# Automate MariaDB secure installation using expect
+# Install expect if not present
+author="expect" 
+if ! command -v expect &>/dev/null; then
+  apt install -y expect
+fi
+
+echo "Running automated mariadb-secure-installation..."
+expect <<'EOF'
+spawn mysql_secure_installation
+expect "Enter current password for root (enter for none):"
+send "
+"
+expect "Switch to unix_socket authentication\?*"
+send "n
+"
+expect "Change the root password\?*"
+send "n
+"
+expect "Remove anonymous users\?*"
+send "y
+"
+expect "Disallow root login remotely\?*"
+send "y
+"
+expect "Remove test database and access to it\?*"
+send "y
+"
+expect "Reload privilege tables now\?*"
+send "y
+"
+expect eof
+EOF
+
+# Ensure firewall defaults
+echo "Configuring default firewall rules..."
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp
+ufw allow www
+ufw allow 'Nginx Full'
+
+echo "Backup user created, backups scheduled, permissions reset, and firewall rules configured."
+
