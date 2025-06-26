@@ -21,6 +21,7 @@ MOODLE_DIR="/var/www/html/moodle"
 MOODLEDATA_DIR="/var/www/moodledata"
 PHP_VERSION="8.3"
 CRON_USER="www-data"
+ADMIN_EMAIL="amit@justuju.in"
 
 # Update & install system packages
 apt update && apt upgrade -y
@@ -51,6 +52,8 @@ find "${MOODLEDATA_DIR}" -type f -exec chmod 600 {} \;
 
 # Set permissions on Moodle code
 chown -R ${CRON_USER}:${CRON_USER} "${MOODLE_DIR}"
+find "${MOODLE_DIR}" -type d -exec chmod 755 {} \;
+find "${MOODLE_DIR}" -type f -exec chmod 644 {} \;
 
 # PHP configuration tuning
 for SAPI in fpm cli; do
@@ -72,7 +75,7 @@ CREATOR="${SUDO_USER:-$(logname)}"
 MYSQL_MOODLEUSER_PASSWORD=$(openssl rand -base64 12)
 DB_CREDS_FILE="/home/${CREATOR}/moodlePasswords.txt"
 
-echo "Moodle DB Password: ${MYSQL_MOODLEUSER_PASSWORD}" | tee "${DB_CREDS_FILE}"
+echo "DB moodleuser password: ${MYSQL_MOODLEUSER_PASSWORD}" | tee "${DB_CREDS_FILE}"
 
 mysql -e "CREATE DATABASE moodle DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 mysql -e "CREATE USER 'moodleuser'@'localhost' IDENTIFIED BY '${MYSQL_MOODLEUSER_PASSWORD}';"
@@ -122,3 +125,4 @@ ln -sf "${NGINX_CONF}" /etc/nginx/sites-enabled/moodle.conf
 nginx -t
 systemctl reload nginx
 
+certbot --nginx --non-interactive --agree-tos --email "devs@justuju.in" -d "${DOMAIN}"
