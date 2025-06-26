@@ -126,3 +126,29 @@ nginx -t
 systemctl reload nginx
 
 certbot --nginx --non-interactive --agree-tos --email "devs@justuju.in" -d "${DOMAIN}"
+
+# Generate admin password and run Moodle CLI installer
+MOODLE_ADMIN_PASSWORD=$(openssl rand -base64 12)
+CREATOR="${SUDO_USER:-$(logname)}"
+echo "Moodle Admin Password: ${MOODLE_ADMIN_PASSWORD}" | tee -a "/home/${CREATOR}/moodlePasswords.txt"
+
+sudo -u ${CRON_USER} \
+  php "${MOODLE_DIR}/admin/cli/install.php" \
+    --non-interactive \
+    --lang=en \
+    --wwwroot="https://${DOMAIN}" \
+    --dataroot="${MOODLEDATA_DIR}" \
+    --dbtype=mariadb \
+    --dbhost=localhost \
+    --dbname=moodle \
+    --dbuser=moodleuser \
+    --dbpass="${MYSQL_MOODLEUSER_PASSWORD}" \
+    --fullname="Moodle Dev Server" \
+    --shortname="dev-server" \
+    --adminuser=admin \
+    --adminpass="${MOODLE_ADMIN_PASSWORD}" \
+    --adminemail="${ADMIN_EMAIL}" \
+    --agree-license
+
+echo "Moodle CLI installation complete. Admin user: admin, password stored in /home/${CREATOR}/moodlePasswords.txt."
+
